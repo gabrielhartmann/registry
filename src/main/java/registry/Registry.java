@@ -5,16 +5,15 @@ import org.apache.curator.retry.RetryForever;
 import org.apache.mesos.Protos;
 import org.apache.mesos.curator.CuratorPersister;
 import org.apache.mesos.dcos.DcosConstants;
+import org.apache.mesos.offer.TaskException;
+import org.apache.mesos.offer.TaskUtils;
 import org.apache.mesos.state.StateStoreException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import registry.state.CuratorReadOnlyStateStore;
 import registry.state.ReadOnlyStateStore;
 
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -64,6 +63,20 @@ public class Registry {
 
     public ReadOnlyStateStore getStore(String serviceName) {
         return registry.get(serviceName);
+    }
+
+    public Map<String, String> getTaskHosts(String serviceName) throws TaskException {
+        ReadOnlyStateStore stateStore = getStore(serviceName);
+        if (stateStore == null) {
+            return Collections.emptyMap();
+        }
+
+        Map<String, String> taskHosts = new HashMap<>();
+        for (Protos.TaskInfo taskInfo : stateStore.fetchTasks()) {
+            taskHosts.put(taskInfo.getName(), TaskUtils.getHostname(taskInfo));
+        }
+
+        return taskHosts;
     }
 
     private String getServiceName(String serviceRoot) {

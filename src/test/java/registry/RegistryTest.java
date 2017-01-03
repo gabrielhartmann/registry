@@ -1,19 +1,25 @@
 package registry;
 
 import org.apache.curator.test.TestingServer;
+import org.apache.mesos.Protos;
 import org.apache.mesos.Protos.FrameworkID;
 import org.apache.mesos.curator.CuratorStateStore;
 import org.apache.mesos.dcos.DcosConstants;
 import org.apache.mesos.state.StateStore;
 import org.apache.mesos.testing.CuratorTestUtils;
 import org.junit.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import registry.api.ApiServer;
 import registry.state.ReadOnlyStateStore;
 
+import java.io.IOException;
+import java.net.ServerSocket;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
 /**
  * Test the Registry.
@@ -22,6 +28,7 @@ public class RegistryTest {
     private static final FrameworkID FRAMEWORK_ID = FrameworkID.newBuilder().setValue("test-framework-id").build();
     private static final String serviceName = "test-service-name";
     private static TestingServer testZk;
+    private final Logger logger = LoggerFactory.getLogger(getClass());
     private StateStore store;
     private Registry registry;
 
@@ -108,7 +115,7 @@ public class RegistryTest {
     @Test
     public void testGetNoStore() throws Exception {
         ReadOnlyStateStore readOnlyStateStore = registry.getStore(serviceName);
-        Assert.assertNull(readOnlyStateStore);
+        assertNull(readOnlyStateStore);
     }
 
     @Test
@@ -116,6 +123,36 @@ public class RegistryTest {
         testGetOneServiceRoot();
         registry.refresh();
         ReadOnlyStateStore readOnlyStateStore = registry.getStore(serviceName);
-        Assert.assertNotNull(readOnlyStateStore);
+        assertNotNull(readOnlyStateStore);
+    }
+
+    @Test
+    public void testGetNoTaskHosts() throws Exception {
+        testGetOneServiceRoot();
+        registry.refresh();
+        assertTrue(registry.getTaskHosts(serviceName).isEmpty());
+    }
+
+    @Test
+    public void testGetOneTaskHost() throws Exception {
+        store = new CuratorStateStore(serviceName, testZk.getConnectString());
+        store.storeFrameworkId(FRAMEWORK_ID);
+        store.storeTasks(Arrays.asList(getTestTaskInfo()));
+        registry.refresh();
+        assertEquals(1, registry.getTaskHosts(serviceName).size());
+        assertEquals("task-name", registry.getTaskHosts(serviceName).keySet().stream().findFirst().get());
+        assertEquals("hostname", registry.getTaskHosts(serviceName).values().stream().findFirst().get());
+    }
+
+    private Protos.TaskInfo getTestTaskInfo() {
+        return Protos.TaskInfo.newBuilder()
+                .setName("task-name")
+                .setTaskId(Protos.TaskID.newBuilder().setValue("task-id"))
+                .setSlaveId(Protos.SlaveID.newBuilder().setValue("slave-id"))
+                .setLabels(Protos.Labels.newBuilder()
+                        .addLabels(Protos.Label.newBuilder()
+                                .setKey("offer_hostname")
+                                .setValue("hostname")))
+                .build();
     }
 }
